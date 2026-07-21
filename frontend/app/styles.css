@@ -1,0 +1,416 @@
+:root {
+  color-scheme: light;
+  --ink: #1f2933;
+  --muted: #617184;
+  --line: #d9e1e8;
+  --paper: #f7f9fb;
+  --panel: #ffffff;
+  --blue: #2563eb;
+  --green: #0f8b6f;
+  --red: #c2410c;
+  --gold: #b7791f;
+  --nav: #172033;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(320px, 460px) 1fr;
+  background: #eef3f8;
+}
+
+.login-panel {
+  background: #fff;
+  padding: 56px 48px;
+  border-right: 1px solid var(--line);
+}
+
+.login-visual {
+  padding: 56px;
+  display: grid;
+  align-content: center;
+  gap: 24px;
+  background:
+    linear-gradient(rgba(23, 32, 51, 0.74), rgba(23, 32, 51, 0.58)),
+    url("https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1600&q=80") center / cover;
+  color: #fff;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  background: var(--blue);
+  color: #fff;
+  border-radius: 6px;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+h1 {
+  font-size: 34px;
+  line-height: 1.1;
+  margin-top: 56px;
+}
+
+p {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.login-visual p {
+  color: #dfe8f1;
+  max-width: 620px;
+}
+
+.form {
+  margin-top: 32px;
+  display: grid;
+  gap: 16px;
+}
+
+label {
+  display: grid;
+  gap: 7px;
+  color: #35465a;
+  font-weight: 650;
+  font-size: 13px;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #fff;
+  color: var(--ink);
+}
+
+textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.button {
+  border: 0;
+  border-radius: 6px;
+  background: var(--blue);
+  color: #fff;
+  padding: 10px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.button.secondary {
+  background: #eef4ff;
+  color: var(--blue);
+  border: 1px solid #c8d8ff;
+}
+
+.button.subtle {
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.error {
+  color: var(--red);
+  font-size: 13px;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 248px 1fr;
+}
+
+.sidebar {
+  background: var(--nav);
+  color: #fff;
+  padding: 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.sidebar .brand-mark {
+  background: #38bdf8;
+  color: #0f172a;
+}
+
+.nav {
+  display: grid;
+  gap: 8px;
+}
+
+.nav button {
+  border: 0;
+  width: 100%;
+  border-radius: 6px;
+  background: transparent;
+  color: #cbd5e1;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.nav button.active,
+.nav button:hover {
+  background: #253149;
+  color: #fff;
+}
+
+.user-tile {
+  margin-top: auto;
+  border-top: 1px solid #334155;
+  padding-top: 18px;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.main {
+  min-width: 0;
+  padding: 28px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.page-title {
+  display: grid;
+  gap: 6px;
+}
+
+.page-title p {
+  margin: 0;
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+}
+
+.metrics {
+  grid-template-columns: repeat(5, minmax(140px, 1fr));
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.metric-value {
+  font-size: 28px;
+  font-weight: 800;
+  margin-top: 10px;
+}
+
+.metric-label {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.split {
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  align-items: start;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table th,
+.table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.table th {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  min-width: 66px;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.status.won {
+  background: #e7f7ef;
+  color: var(--green);
+}
+
+.status.lost {
+  background: #fff0e8;
+  color: var(--red);
+}
+
+.status.pending {
+  background: #fff8db;
+  color: var(--gold);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+
+.stack {
+  display: grid;
+  gap: 14px;
+}
+
+.playbook-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.script {
+  border-left: 4px solid var(--blue);
+  padding-left: 12px;
+  color: #24364b;
+  font-weight: 650;
+}
+
+.bars {
+  display: grid;
+  gap: 12px;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 170px 1fr 52px;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.bar-track {
+  height: 9px;
+  border-radius: 999px;
+  background: #e6edf4;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background: var(--green);
+}
+
+@media (max-width: 1020px) {
+  .login-page,
+  .app-shell,
+  .split {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+
+  .nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .metrics,
+  .playbook-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .main,
+  .login-panel,
+  .login-visual {
+    padding: 22px;
+  }
+
+  .metrics,
+  .playbook-grid,
+  .form-grid,
+  .nav {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
