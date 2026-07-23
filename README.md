@@ -17,13 +17,24 @@ MVP web app for real estate sales teams focused on appraisal-to-listing conversi
 - Appraisal pipeline with create/update flows
 - Vendor objections, competitor agents, price estimate, win probability and next action capture
 - AI appraisal preparation brief and follow-up recommendation endpoint
+- Structured AI assistant in the Lead Workspace for summaries, fact extraction, override classification, questions, message drafts, talking points, pattern candidates and appraisal briefs
 - Adaptive Lead Management foundation for recording lead recommendations, decisions, overrides and outcomes
+- Deterministic next-best-action engine with configurable seller/appraisal rules
+- Lead Workspace with an Adaptive Sales panel for generating, accepting, modifying, overriding and completing recommendations
+- Adaptive seller qualification with prefilled property facts, provenance, confidence, verification status and structured response capture
+- Explainable agent allocation with ranked candidates, exclusions, decisive factors, backup agent and override audit
+- Sales-success pattern library with manager review, lifecycle governance and audit history
+- Manager-approved sales experiments with assignment audit, guardrail metrics and no automatic policy deployment
+- Comparable-context adaptive analytics with funnel, recommendation, override, channel, allocation and experiment summaries
+- Progressive autonomy controls for manager-approved task policies, QA sampling, exception queues, rollback and automatic suspension
 - Manager analytics dashboard comparing agent behaviours against benchmarks
 - Top Agent Playbook with behaviours, scripts and decision patterns
 - Seed data for 5 sales agents, 50 leads, 30 appraisals and 10 listings
-- Basic API and frontend formatting tests
+- Named Adaptive Lead Management demo scenarios for lead capture, recommendation decisions, allocation, experiments and autonomy rollback
+- Backend, frontend and acceptance-level E2E tests
 
 For a live walkthrough, use [TUTORIAL_RUN_SHEET.md](./TUTORIAL_RUN_SHEET.md).
+For the Adaptive Lead Management acceptance audit, see [docs/adaptive-lead-management-acceptance-report.md](./docs/adaptive-lead-management-acceptance-report.md).
 
 ## Project Structure
 
@@ -39,6 +50,16 @@ backend/
     auth.py          password hashing and JWT auth
     adaptive_services.py
                     Adaptive recommendation, decision and outcome services
+    recommendation_engine.py
+                    Deterministic next-best-action policy and rule seeding
+    qualification.py  Adaptive seller qualification and property fact verification
+    allocation.py     Deterministic agent allocation scoring and explanation
+    patterns.py       Sales-success pattern lifecycle and manager governance
+    experiments.py    Manager-approved experiment lifecycle, assignment and results
+    adaptive_analytics.py
+                    Comparable-context funnel, recommendation and experiment metrics
+    adaptive_ai.py   Structured AI assistant, schema validation and fallback logic
+    prompts/         Versioned prompt templates and schema metadata
   alembic/
     versions/        Database migrations
 frontend/
@@ -88,12 +109,34 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
+If Alembic reports that adaptive tables already exist, your local SQLite database was likely created by the MVP `create_all` startup path before Alembic versioning. For local development, use the reset flow above so Alembic can recreate and stamp the schema cleanly.
+
 Startup seed data includes adaptive lead-management examples for:
 
+- portal seller enquiry, past-client referral, appraisal request, buyer who also needs to sell, prestige downsizer, tenanted-investor sale, multi-agent seller, early nurture seller, urgent relocation and incorrectly classified lead scenarios
 - accepted recommendation
 - modified recommendation
 - successful override
 - unsuccessful override
+- missed response SLA and reassignment
+- adaptive seller qualification answers
+- property facts with source, confidence and verification status
+- explainable agent allocation recommendations and capability profiles
+- sales-success pattern examples with observations, confounders, outcome metrics and review events
+- manager-approved experiment examples with assignments, a successful treatment scenario, guardrail outcomes, an inconclusive experiment and data-quality warnings
+- structured AI assistant examples with prompt/schema versions and fallback outputs
+- autonomy policy examples for routine follow-up, opening-message drafting and human-controlled seller qualification, plus a seeded exception and QA review
+
+It also seeds the initial configurable next-best-action rules for seller/appraisal leads:
+
+- urgent portal enquiry immediate response
+- introductory SMS before first call
+- seller motivation before price expectation
+- two appraisal appointment options
+- comparable sales before early appraisal requests
+- non-ready seller nurture
+- missed high-value response SLA escalation
+- consent or suppression stop-contact guardrail
 
 ## Frontend Setup
 
@@ -221,6 +264,51 @@ All seeded users use password `password123`.
 - `POST /appraisals/{appraisal_id}/ai/follow_up`
 - `GET /playbook`
 - `GET /manager/benchmarks`
+- `GET /leads`
+- `POST /leads`
+- `GET /leads/{lead_id}/workspace`
+- `POST /leads/{lead_id}/ai-assistant`
+- `GET /leads/{lead_id}/ai-assistant`
+- `GET /leads/{lead_id}/qualification`
+- `GET /leads/{lead_id}/qualification/next-question`
+- `POST /leads/{lead_id}/qualification/responses`
+- `POST /leads/{lead_id}/qualification/questions/{question_id}/skip`
+- `PUT /leads/{lead_id}/property-facts/{fact_key}`
+- `POST /leads/{lead_id}/allocation/recommend`
+- `GET /leads/{lead_id}/allocation/history`
+- `POST /allocation-recommendations/{allocation_id}/accept`
+- `POST /allocation-recommendations/{allocation_id}/override`
+- `GET /manager/patterns`
+- `POST /manager/patterns`
+- `GET /manager/patterns/review-queue`
+- `GET /manager/patterns/{pattern_id}`
+- `POST /manager/patterns/{pattern_id}/transition`
+- `POST /manager/patterns/{pattern_id}/observations`
+- `GET /manager/experiments`
+- `POST /manager/experiments`
+- `GET /manager/experiments/{experiment_id}`
+- `POST /manager/experiments/{experiment_id}/approve`
+- `POST /manager/experiments/{experiment_id}/start`
+- `POST /manager/experiments/{experiment_id}/complete`
+- `POST /manager/experiments/{experiment_id}/suspend`
+- `POST /manager/experiments/{experiment_id}/assignments`
+- `GET /manager/experiments/{experiment_id}/results`
+- `GET /manager/adaptive-analytics/summary`
+- `GET /manager/autonomy/policies`
+- `POST /manager/autonomy/policies`
+- `GET /manager/autonomy/policies/{policy_id}`
+- `PATCH /manager/autonomy/policies/{policy_id}`
+- `POST /manager/autonomy/policies/{policy_id}/publish`
+- `POST /manager/autonomy/policies/{policy_id}/rollback`
+- `GET /manager/autonomy/policies/{policy_id}/history`
+- `GET /manager/autonomy/exceptions`
+- `POST /manager/autonomy/exceptions`
+- `POST /manager/autonomy/exceptions/{exception_id}/resolve`
+- `POST /manager/autonomy/qa-reviews`
+- `POST /manager/autonomy/qa-reviews/{review_id}/resolve`
+- `GET /manager/autonomy/drift`
+- `POST /leads/{lead_id}/recommendations`
+- `GET /leads/{lead_id}/recommendations/active`
 - `POST /leads/{lead_id}/adaptive-recommendations`
 - `POST /leads/{lead_id}/decisions`
 - `GET /leads/{lead_id}/decisions`
@@ -228,6 +316,18 @@ All seeded users use password `password123`.
 - `POST /recommendations/{recommendation_id}/accept`
 - `POST /recommendations/{recommendation_id}/modify`
 - `POST /recommendations/{recommendation_id}/override`
+- `POST /recommendations/{recommendation_id}/complete`
+- `POST /recommendations/{recommendation_id}/expire`
+- `GET /manager/next-best-action-rules`
+
+Generate a deterministic next-best-action recommendation:
+
+```powershell
+curl -X POST "http://localhost:8000/leads/1/recommendations" `
+  -H "Authorization: Bearer <token>" `
+  -H "Content-Type: application/json" `
+  -d '{"context":{"task_type":"first_response_timing","urgency":"urgent"}}'
+```
 
 ## Tests
 
@@ -238,13 +338,55 @@ cd backend
 pytest
 ```
 
+For a clean throwaway SQLite test database:
+
+```powershell
+cd backend
+$env:DATABASE_URL="sqlite:///./test_run.db"
+pytest
+Remove-Item .\test_run.db
+```
+
 Frontend:
 
 ```powershell
 cd frontend
 npm test
+npm run lint
+npm exec tsc -- --noEmit
+npm run build
+```
+
+There is no separate `typecheck` npm script; use `npm exec tsc -- --noEmit` for an explicit TypeScript check. `npm run build` also runs Next.js production validation.
+
+Adaptive Lead Management acceptance/E2E tests:
+
+```powershell
+cd backend
+$env:DATABASE_URL="sqlite:///./adaptive_acceptance_test.db"
+pytest tests/test_adaptive_e2e.py -q
+Remove-Item .\adaptive_acceptance_test.db
 ```
 
 ## AI Behaviour
 
-If `OPENAI_API_KEY` is set, the backend calls the configured OpenAI model for appraisal preparation and follow-up coaching. If no key is present and `ALLOW_AI_FALLBACK=true`, it returns a deterministic coaching brief from local appraisal, vendor and property context so the MVP remains runnable in local development.
+If `OPENAI_API_KEY` is set, the backend calls the configured OpenAI model for appraisal preparation, follow-up coaching and adaptive lead assistant actions. Adaptive lead assistant outputs are validated against structured Pydantic schemas before being stored.
+
+If no key is present, the model times out, or the response fails schema or unsupported-inference checks, `ALLOW_AI_FALLBACK=true` returns deterministic structured output from local lead, vendor and property context. Each assistant interaction stores model version, prompt version, schema version, policy version, confidence, evidence references, execution timestamp, original note/transcript and the validated structured output.
+
+Prompt metadata is versioned in `backend/app/prompts/adaptive_ai_v1.json`. The assistant is not allowed to change workflow policies, approve experiments, promote patterns, make high-risk reassignments, infer unsupported personal attributes or treat correlation as causation.
+
+## Progressive Autonomy Controls
+
+Managers can configure autonomy independently for each workflow task from **Manager Analytics**. The supported maturity states are:
+
+1. Human performs; system records
+2. AI observes and summarises
+3. AI recommends
+4. AI acts after approval
+5. AI acts with exception review
+6. AI acts autonomously with sampled QA
+
+Each policy stores current and target autonomy state, evidence requirement, maximum error rate, override threshold, risk classification, approval authority, QA sample rate, rollback trigger and effective policy version. Publishing writes an auditable `WorkflowPolicyVersion`; rollback restores human control and records a rollback version. Drift monitoring can automatically suspend active policies when QA error rate, override rate or configured exception triggers are breached.
+
+Sensitive workflows remain human-controlled by default and cannot be advanced beyond AI recommendation in the MVP: seller qualification, high-value allocation/reassignment, objection handling, appraisal strategy and appointment conversion. Low-risk candidates such as routine follow-up content, opening-message drafts and note capture can progress further when the evidence and QA thresholds are met.

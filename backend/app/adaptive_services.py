@@ -10,12 +10,15 @@ from app.models import (
     LeadOutcome,
     RecommendationDecisionType,
     RecommendationStatus,
+    WorkflowTaskType,
 )
 from app.schemas import (
     AIRecommendationCreate,
     LeadDecisionCreate,
     LeadOutcomeCreate,
     RecommendationAccept,
+    RecommendationComplete,
+    RecommendationExpire,
     RecommendationModify,
     RecommendationOverride,
 )
@@ -23,6 +26,20 @@ from app.schemas import (
 
 class AdaptiveLeadError(ValueError):
     pass
+
+
+ACTIONABLE_RECOMMENDATION_STATUSES = {
+    RecommendationStatus.proposed,
+    RecommendationStatus.accepted,
+    RecommendationStatus.modified,
+    RecommendationStatus.overridden,
+}
+
+TERMINAL_RECOMMENDATION_STATUSES = {
+    RecommendationStatus.completed,
+    RecommendationStatus.expired,
+    RecommendationStatus.superseded,
+}
 
 
 def build_lead_context_snapshot(lead: Lead) -> dict:
@@ -115,20 +132,34 @@ def get_recommendation_or_raise(db: Session, recommendation_id: int) -> AIRecomm
     return recommendation
 
 
+def ensure_lead_access(lead: Lead, actor: Agent, verb: str) -> None:
+    if actor.role.value == "sales_agent" and lead.agent_id != actor.id:
+        raise AdaptiveLeadError(f"Cannot {verb} another agent's lead")
+
+
+def ensure_recommendation_access(recommendation: AIRecommendation, actor: Agent, verb: str) -> None:
+    ensure_lead_access(recommendation.lead, actor, verb)
+
+
+def ensure_recommendation_actionable(recommendation: AIRecommendation) -> None:
+    if recommendation.status in TERMINAL_RECOMMENDATION_STATUSES:
+        raise AdaptiveLeadError(f"Recommendation is already {recommendation.status.value}")
+
+
 def record_lead_decision(
     db: Session,
     lead: Lead,
     actor: Agent,
     payload: LeadDecisionCreate,
 ) -> LeadDecision:
-    if actor.role.value == "sales_agent" and lead.agent_id != actor.id:
-        raise AdaptiveLeadError("Cannot record a decision for another agent's lead")
+    ensure_lead_access(lead, actor, "record a decision for")
 
     recommendation = None
     if payload.ai_recommendation_id is not None:
         recommendation = get_recommendation_or_raise(db, payload.ai_recommendation_id)
         if recommendation.lead_id != lead.id:
             raise AdaptiveLeadError("Recommendation does not belong to this lead")
+        ensure_recommendation_actionable(recommendation)
 
     decision = LeadDecision(
         lead_id=lead.id,
@@ -169,6 +200,8 @@ def accept_recommendation(
     actor: Agent,
     payload: RecommendationAccept,
 ) -> LeadDecision:
+    ensure_recommendation_access(recommendation, actor, "accept recommendation for")
+    ensure_recommendation_actionable(recommendation)
     return record_lead_decision(
         db,
         recommendation.lead,
@@ -197,6 +230,8 @@ def modify_recommendation(
     actor: Agent,
     payload: RecommendationModify,
 ) -> LeadDecision:
+    ensure_recommendation_access(recommendation, actor, "modify recommendation for")
+    ensure_recommendation_actionable(recommendation)
     return record_lead_decision(
         db,
         recommendation.lead,
@@ -225,6 +260,8 @@ def override_recommendation(
     actor: Agent,
     payload: RecommendationOverride,
 ) -> LeadDecision:
+    ensure_recommendation_access(recommendation, actor, "override recommendation for")
+    ensure_recommendation_actionable(recommendation)
     return record_lead_decision(
         db,
         recommendation.lead,
@@ -255,12 +292,13 @@ def record_lead_outcome(
     actor: Agent,
     payload: LeadOutcomeCreate,
 ) -> LeadOutcome:
-    if actor.role.value == "sales_agent" and lead.agent_id != actor.id:
-        raise AdaptiveLeadError("Cannot record an outcome for another agent's lead")
+    ensure_lead_access(lead, actor, "record an outcome for")
     if payload.decision_id is not None:
         decision = db.query(LeadDecision).filter(LeadDecision.id == payload.decision_id).first()
         if not decision or decision.lead_id != lead.id:
             raise AdaptiveLeadError("Decision does not belong to this lead")
+    if payload.verified_by is not None and not db.query(Agent).filter(Agent.id == payload.verified_by).first():
+        raise AdaptiveLeadError("Outcome verifier not found")
 
     outcome = LeadOutcome(
         lead_id=lead.id,
@@ -281,11 +319,83 @@ def record_lead_outcome(
 
 
 def get_chronological_decision_history(db: Session, lead: Lead, actor: Agent) -> list[LeadDecision]:
-    if actor.role.value == "sales_agent" and lead.agent_id != actor.id:
-        raise AdaptiveLeadError("Cannot view decision history for another agent's lead")
+    ensure_lead_access(lead, actor, "view decision history for")
     return (
         db.query(LeadDecision)
         .filter(LeadDecision.lead_id == lead.id)
         .order_by(LeadDecision.action_timestamp.asc(), LeadDecision.created_at.asc(), LeadDecision.id.asc())
         .all()
     )
+
+
+def get_active_recommendation(
+    db: Session,
+    lead: Lead,
+    actor: Agent,
+    task_type: WorkflowTaskType | None = None,
+) -> AIRecommendation:
+    ensure_lead_access(lead, actor, "view recommendation for")
+    query = db.query(AIRecommendation).filter(
+        AIRecommendation.lead_id == lead.id,
+        AIRecommendation.status == RecommendationStatus.proposed,
+    )
+    if task_type:
+        query = query.filter(AIRecommendation.task_type == task_type)
+    recommendation = query.order_by(AIRecommendation.recommended_at.desc(), AIRecommendation.id.desc()).first()
+    if not recommendation:
+        raise AdaptiveLeadError("Active recommendation not found")
+    return recommendation
+
+
+def complete_recommendation(
+    db: Session,
+    recommendation: AIRecommendation,
+    actor: Agent,
+    payload: RecommendationComplete,
+) -> AIRecommendation:
+    ensure_recommendation_access(recommendation, actor, "complete recommendation for")
+    ensure_recommendation_actionable(recommendation)
+    recommendation.status = RecommendationStatus.completed
+    recommendation.updated_at = datetime.utcnow()
+    if payload.outcome_code:
+        outcome = LeadOutcome(
+            lead_id=recommendation.lead_id,
+            decision_id=None,
+            stage=recommendation.lead.status.value,
+            outcome_type=payload.outcome_code,
+            outcome_value=payload.outcome_code,
+            occurred_at=payload.occurred_at or datetime.utcnow(),
+            source="recommendation_completion",
+            verified_by=actor.id,
+            notes=payload.outcome_notes,
+        )
+        db.add(outcome)
+    db.commit()
+    db.refresh(recommendation)
+    return recommendation
+
+
+def expire_recommendation(
+    db: Session,
+    recommendation: AIRecommendation,
+    actor: Agent,
+    payload: RecommendationExpire,
+) -> AIRecommendation:
+    ensure_recommendation_access(recommendation, actor, "expire recommendation for")
+    if recommendation.status == RecommendationStatus.completed:
+        raise AdaptiveLeadError("Completed recommendations cannot be expired")
+    if payload.status not in {RecommendationStatus.expired, RecommendationStatus.superseded}:
+        raise AdaptiveLeadError("Use expired or superseded status")
+    recommendation.status = payload.status
+    recommendation.updated_at = datetime.utcnow()
+    evidence = dict(recommendation.evidence or {})
+    evidence["lifecycle_transition"] = {
+        "status": payload.status.value,
+        "reason": payload.reason,
+        "actor_id": actor.id,
+        "occurred_at": recommendation.updated_at.isoformat(),
+    }
+    recommendation.evidence = evidence
+    db.commit()
+    db.refresh(recommendation)
+    return recommendation

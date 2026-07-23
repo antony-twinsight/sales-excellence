@@ -4,12 +4,13 @@ import { BarChart3, BookOpen, Bot, CalendarDays, ClipboardList, Gauge, LogOut, T
 import type { Agent, Appraisal, Metrics } from "./types";
 import { clearSession, currency, shortDate } from "./api";
 
-type View = "dashboard" | "pipeline" | "coaching" | "playbook" | "manager";
+type View = "dashboard" | "pipeline" | "leads" | "coaching" | "playbook" | "manager";
 
 export function Sidebar({ user, view, setView }: { user: Agent; view: View; setView: (view: View) => void }) {
   const nav = [
     ["dashboard", Gauge, "Dashboard"],
     ["pipeline", ClipboardList, "Pipeline"],
+    ["leads", Users, "Leads"],
     ["coaching", Bot, "AI Coach"],
     ["playbook", BookOpen, "Playbook"],
     ["manager", BarChart3, "Manager"]

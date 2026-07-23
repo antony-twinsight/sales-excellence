@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from enum import Enum
 
-from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, Float, ForeignKey, Index, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -110,6 +110,67 @@ class WorkflowPolicyStatus(str, Enum):
     active = "active"
     superseded = "superseded"
     rolled_back = "rolled_back"
+
+
+class AutonomyState(str, Enum):
+    human_records = "human_records"
+    ai_observes = "ai_observes"
+    ai_recommends = "ai_recommends"
+    ai_acts_after_approval = "ai_acts_after_approval"
+    ai_acts_with_exception_review = "ai_acts_with_exception_review"
+    ai_acts_autonomously_sampled_qa = "ai_acts_autonomously_sampled_qa"
+
+
+class AutonomyPolicyStatus(str, Enum):
+    draft = "draft"
+    active = "active"
+    suspended = "suspended"
+    rolled_back = "rolled_back"
+    superseded = "superseded"
+
+
+class AutonomyExceptionStatus(str, Enum):
+    open = "open"
+    in_review = "in_review"
+    resolved = "resolved"
+
+
+class AutonomyQAStatus(str, Enum):
+    pending = "pending"
+    passed = "passed"
+    failed = "failed"
+
+
+class FactVerificationStatus(str, Enum):
+    external_data_estimate = "external_data_estimate"
+    seller_confirmed = "seller_confirmed"
+    salesperson_confirmed = "salesperson_confirmed"
+    agent_visually_verified = "agent_visually_verified"
+    document_verified = "document_verified"
+    unknown = "unknown"
+
+
+class QualificationQuestionStatus(str, Enum):
+    selected = "selected"
+    answered = "answered"
+    confirmed = "confirmed"
+    skipped = "skipped"
+
+
+class QualificationResponseType(str, Enum):
+    text = "text"
+    select = "select"
+    multi_select = "multi_select"
+    boolean = "boolean"
+    date = "date"
+    number = "number"
+
+
+class AllocationRecommendationStatus(str, Enum):
+    proposed = "proposed"
+    accepted = "accepted"
+    overridden = "overridden"
+    expired = "expired"
 
 
 class Agent(Base):
@@ -440,11 +501,42 @@ class LeadOutcome(Base):
     verifier: Mapped[Agent | None] = relationship()
 
 
+class AdaptiveAIInteraction(Base):
+    __tablename__ = "adaptive_ai_interactions"
+    __table_args__ = (
+        Index("ix_adaptive_ai_interactions_lead_operation", "lead_id", "operation"),
+        Index("ix_adaptive_ai_interactions_agent_time", "agent_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id"), index=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), index=True)
+    operation: Mapped[str] = mapped_column(String(120), index=True)
+    user_input: Mapped[str] = mapped_column(Text, default="")
+    original_note: Mapped[str] = mapped_column(Text, default="")
+    transcript: Mapped[str] = mapped_column(Text, default="")
+    prompt_version: Mapped[str] = mapped_column(String(80), default="adaptive-ai-v1", index=True)
+    schema_version: Mapped[str] = mapped_column(String(80), default="adaptive-ai-output-v1")
+    model_version: Mapped[str] = mapped_column(String(80), default="deterministic")
+    policy_version: Mapped[str] = mapped_column(String(80), default="adaptive-ai-policy-v1", index=True)
+    status: Mapped[str] = mapped_column(String(80), default="succeeded", index=True)
+    confidence: Mapped[float] = mapped_column(Float, default=0.5)
+    evidence_references: Mapped[list] = mapped_column(JSON, default=list)
+    input_context: Mapped[dict] = mapped_column(JSON, default=dict)
+    structured_output: Mapped[dict] = mapped_column(JSON, default=dict)
+    error_message: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+    lead: Mapped[Lead] = relationship()
+    agent: Mapped[Agent] = relationship()
+
+
 class SuccessPattern(Base):
     __tablename__ = "success_patterns"
     __table_args__ = (
         Index("ix_success_patterns_status_task", "status", "task_type"),
         Index("ix_success_patterns_active_status", "active", "status"),
+        Index("ix_success_patterns_responsible_manager", "responsible_manager_id", "status"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
@@ -453,22 +545,33 @@ class SuccessPattern(Base):
     task_type: Mapped[WorkflowTaskType] = mapped_column(SqlEnum(WorkflowTaskType), index=True)
     lead_segment_definition: Mapped[dict] = mapped_column(JSON, default=dict)
     source_type: Mapped[str] = mapped_column(String(100))
+    contributor_agent_ids: Mapped[list] = mapped_column(JSON, default=list)
     supporting_evidence: Mapped[dict] = mapped_column(JSON, default=dict)
+    example_interactions: Mapped[list] = mapped_column(JSON, default=list)
+    outcome_metrics: Mapped[dict] = mapped_column(JSON, default=dict)
+    sample_size: Mapped[int] = mapped_column(Integer, default=0)
+    possible_confounders: Mapped[list] = mapped_column(JSON, default=list)
+    validation_status: Mapped[str] = mapped_column(String(100), default="unvalidated")
+    approval_status: Mapped[str] = mapped_column(String(100), default="pending_review")
     status: Mapped[PatternStatus] = mapped_column(SqlEnum(PatternStatus), default=PatternStatus.proposed, index=True)
     confidence: Mapped[float] = mapped_column(Float, default=0.5)
     risk_level: Mapped[str] = mapped_column(String(80), default="medium")
     owner_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
+    responsible_manager_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
     introduced_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    recommended_validation_method: Mapped[str] = mapped_column(String(160), default="manager_review")
     automation_eligibility: Mapped[str] = mapped_column(String(80), default="not_eligible")
     current_workflow_effect: Mapped[str] = mapped_column(Text, default="")
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    owner: Mapped[Agent | None] = relationship()
+    owner: Mapped[Agent | None] = relationship(foreign_keys=[owner_id])
+    responsible_manager: Mapped[Agent | None] = relationship(foreign_keys=[responsible_manager_id])
     observations: Mapped[list["PatternObservation"]] = relationship(back_populates="success_pattern")
+    review_events: Mapped[list["PatternReviewEvent"]] = relationship(back_populates="success_pattern")
 
 
 class PatternObservation(Base):
@@ -496,10 +599,32 @@ class PatternObservation(Base):
     decision: Mapped[LeadDecision | None] = relationship()
 
 
+class PatternReviewEvent(Base):
+    __tablename__ = "pattern_review_events"
+    __table_args__ = (
+        Index("ix_pattern_review_events_pattern_time", "success_pattern_id", "created_at"),
+        Index("ix_pattern_review_events_actor_time", "actor_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    success_pattern_id: Mapped[int] = mapped_column(ForeignKey("success_patterns.id"), index=True)
+    actor_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), index=True)
+    action: Mapped[str] = mapped_column(String(120), index=True)
+    from_status: Mapped[str] = mapped_column(String(100), default="")
+    to_status: Mapped[str] = mapped_column(String(100), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    context_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+    success_pattern: Mapped[SuccessPattern] = relationship(back_populates="review_events")
+    actor: Mapped[Agent] = relationship()
+
+
 class SalesExperiment(Base):
     __tablename__ = "sales_experiments"
     __table_args__ = (
         Index("ix_sales_experiments_status_dates", "status", "start_date", "end_date"),
+        Index("ix_sales_experiments_primary_status", "primary_metric", "status"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
@@ -512,11 +637,17 @@ class SalesExperiment(Base):
     primary_metric: Mapped[str] = mapped_column(String(120))
     secondary_metrics: Mapped[list] = mapped_column(JSON, default=list)
     guardrail_metrics: Mapped[list] = mapped_column(JSON, default=list)
+    guardrail_thresholds: Mapped[dict] = mapped_column(JSON, default=dict)
     minimum_sample_target: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[ExperimentStatus] = mapped_column(SqlEnum(ExperimentStatus), default=ExperimentStatus.draft, index=True)
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     approved_by: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    result_metrics: Mapped[dict] = mapped_column(JSON, default=dict)
+    data_quality_warnings: Mapped[list] = mapped_column(JSON, default=list)
+    evidence_label: Mapped[str] = mapped_column(String(80), default="descriptive")
     result_summary: Mapped[str] = mapped_column(Text, default="")
     interpretation: Mapped[str] = mapped_column(Text, default="")
     decision: Mapped[str] = mapped_column(Text, default="")
@@ -524,6 +655,56 @@ class SalesExperiment(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     approver: Mapped[Agent | None] = relationship()
+    assignments: Mapped[list["ExperimentAssignment"]] = relationship(back_populates="experiment")
+    events: Mapped[list["ExperimentEvent"]] = relationship(back_populates="experiment")
+
+
+class ExperimentAssignment(Base):
+    __tablename__ = "experiment_assignments"
+    __table_args__ = (
+        UniqueConstraint("experiment_id", "lead_id", name="uq_experiment_assignments_experiment_lead"),
+        Index("ix_experiment_assignments_experiment_variant", "experiment_id", "variant"),
+        Index("ix_experiment_assignments_lead_variant", "lead_id", "variant"),
+        Index("ix_experiment_assignments_included", "included_in_results"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    experiment_id: Mapped[int] = mapped_column(ForeignKey("sales_experiments.id"), index=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id"), index=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), index=True)
+    variant: Mapped[str] = mapped_column(String(40), default="control", index=True)
+    assignment_method: Mapped[str] = mapped_column(String(100), default="deterministic_hash")
+    context_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    included_in_results: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    exclusion_reason: Mapped[str] = mapped_column(Text, default="")
+    outcome_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    experiment: Mapped[SalesExperiment] = relationship(back_populates="assignments")
+    lead: Mapped[Lead] = relationship()
+    agent: Mapped[Agent] = relationship()
+
+
+class ExperimentEvent(Base):
+    __tablename__ = "experiment_events"
+    __table_args__ = (
+        Index("ix_experiment_events_experiment_time", "experiment_id", "created_at"),
+        Index("ix_experiment_events_actor_time", "actor_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    experiment_id: Mapped[int] = mapped_column(ForeignKey("sales_experiments.id"), index=True)
+    actor_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), index=True)
+    action: Mapped[str] = mapped_column(String(120), index=True)
+    from_status: Mapped[str] = mapped_column(String(80), default="")
+    to_status: Mapped[str] = mapped_column(String(80), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    context_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+    experiment: Mapped[SalesExperiment] = relationship(back_populates="events")
+    actor: Mapped[Agent] = relationship()
 
 
 class AgentCapabilityProfile(Base):
@@ -568,3 +749,249 @@ class WorkflowPolicyVersion(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     approver: Mapped[Agent | None] = relationship()
+
+
+class WorkflowTaskAutonomyPolicy(Base):
+    __tablename__ = "workflow_task_autonomy_policies"
+    __table_args__ = (
+        UniqueConstraint("task_type", "effective_policy_version", name="uq_autonomy_policy_task_version"),
+        Index("ix_autonomy_policy_task_status", "task_type", "status"),
+        Index("ix_autonomy_policy_effective", "effective_from", "effective_to"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    task_type: Mapped[WorkflowTaskType] = mapped_column(SqlEnum(WorkflowTaskType), index=True)
+    current_state: Mapped[AutonomyState] = mapped_column(SqlEnum(AutonomyState), default=AutonomyState.human_records, index=True)
+    target_state: Mapped[AutonomyState] = mapped_column(SqlEnum(AutonomyState), default=AutonomyState.ai_recommends, index=True)
+    minimum_evidence_count: Mapped[int] = mapped_column(Integer, default=10)
+    maximum_error_rate: Mapped[float] = mapped_column(Float, default=0.05)
+    override_rate_threshold: Mapped[float] = mapped_column(Float, default=0.25)
+    risk_classification: Mapped[str] = mapped_column(String(80), default="medium", index=True)
+    approval_authority: Mapped[str] = mapped_column(String(120), default="sales_manager")
+    qa_sample_rate: Mapped[float] = mapped_column(Float, default=0.1)
+    rollback_trigger: Mapped[dict] = mapped_column(JSON, default=dict)
+    effective_policy_version: Mapped[str] = mapped_column(String(80), default="autonomy-draft", index=True)
+    status: Mapped[AutonomyPolicyStatus] = mapped_column(SqlEnum(AutonomyPolicyStatus), default=AutonomyPolicyStatus.draft, index=True)
+    approved_by_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True)
+    effective_from: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    effective_to: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    approver: Mapped[Agent | None] = relationship()
+    events: Mapped[list["AutonomyPolicyEvent"]] = relationship(back_populates="policy", cascade="all, delete-orphan")
+    exceptions: Mapped[list["AutonomyException"]] = relationship(back_populates="policy", cascade="all, delete-orphan")
+    qa_reviews: Mapped[list["AutonomyQAReview"]] = relationship(back_populates="policy", cascade="all, delete-orphan")
+
+
+class AutonomyPolicyEvent(Base):
+    __tablename__ = "autonomy_policy_events"
+    __table_args__ = (
+        Index("ix_autonomy_policy_events_policy_time", "policy_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    policy_id: Mapped[int] = mapped_column(ForeignKey("workflow_task_autonomy_policies.id"), index=True)
+    actor_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
+    action: Mapped[str] = mapped_column(String(120), index=True)
+    from_state: Mapped[str] = mapped_column(String(120), default="")
+    to_state: Mapped[str] = mapped_column(String(120), default="")
+    from_status: Mapped[str] = mapped_column(String(80), default="")
+    to_status: Mapped[str] = mapped_column(String(80), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    context_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    policy: Mapped[WorkflowTaskAutonomyPolicy] = relationship(back_populates="events")
+    actor: Mapped[Agent | None] = relationship()
+
+
+class AutonomyException(Base):
+    __tablename__ = "autonomy_exceptions"
+    __table_args__ = (
+        Index("ix_autonomy_exceptions_policy_status", "policy_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    policy_id: Mapped[int] = mapped_column(ForeignKey("workflow_task_autonomy_policies.id"), index=True)
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id"), nullable=True, index=True)
+    ai_interaction_id: Mapped[int | None] = mapped_column(ForeignKey("adaptive_ai_interactions.id"), nullable=True, index=True)
+    recommendation_id: Mapped[int | None] = mapped_column(ForeignKey("ai_recommendations.id"), nullable=True, index=True)
+    severity: Mapped[str] = mapped_column(String(40), default="medium", index=True)
+    reason_code: Mapped[str] = mapped_column(String(120), index=True)
+    status: Mapped[AutonomyExceptionStatus] = mapped_column(SqlEnum(AutonomyExceptionStatus), default=AutonomyExceptionStatus.open, index=True)
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reviewed_by_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True)
+    resolution_notes: Mapped[str] = mapped_column(Text, default="")
+
+    policy: Mapped[WorkflowTaskAutonomyPolicy] = relationship(back_populates="exceptions")
+    reviewer: Mapped[Agent | None] = relationship()
+
+
+class AutonomyQAReview(Base):
+    __tablename__ = "autonomy_qa_reviews"
+    __table_args__ = (
+        Index("ix_autonomy_qa_reviews_policy_status", "policy_id", "status"),
+        Index("ix_autonomy_qa_reviews_policy_created", "policy_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    policy_id: Mapped[int] = mapped_column(ForeignKey("workflow_task_autonomy_policies.id"), index=True)
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id"), nullable=True, index=True)
+    ai_interaction_id: Mapped[int | None] = mapped_column(ForeignKey("adaptive_ai_interactions.id"), nullable=True, index=True)
+    recommendation_id: Mapped[int | None] = mapped_column(ForeignKey("ai_recommendations.id"), nullable=True, index=True)
+    reviewer_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
+    sample_reason: Mapped[str] = mapped_column(String(120), default="sampled")
+    status: Mapped[AutonomyQAStatus] = mapped_column(SqlEnum(AutonomyQAStatus), default=AutonomyQAStatus.pending, index=True)
+    error_detected: Mapped[bool] = mapped_column(Boolean, default=False)
+    error_category: Mapped[str] = mapped_column(String(120), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    policy: Mapped[WorkflowTaskAutonomyPolicy] = relationship(back_populates="qa_reviews")
+    reviewer: Mapped[Agent | None] = relationship()
+
+
+class NextBestActionRule(Base):
+    __tablename__ = "next_best_action_rules"
+    __table_args__ = (
+        Index("ix_next_best_action_rules_active_task_priority", "active", "task_type", "priority"),
+        Index("ix_next_best_action_rules_scope", "office", "lead_source", "task_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    code: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(180))
+    description: Mapped[str] = mapped_column(Text, default="")
+    task_type: Mapped[WorkflowTaskType] = mapped_column(SqlEnum(WorkflowTaskType), index=True)
+    priority: Mapped[int] = mapped_column(Integer, default=100, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    office: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    lead_source: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    lead_segment: Mapped[dict] = mapped_column(JSON, default=dict)
+    conditions: Mapped[dict] = mapped_column(JSON, default=dict)
+    recommendation_template: Mapped[dict] = mapped_column(JSON, default=dict)
+    policy_version: Mapped[str] = mapped_column(String(80), default="nba-rules-v1", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class LeadPropertyFact(Base):
+    __tablename__ = "lead_property_facts"
+    __table_args__ = (
+        Index("ix_lead_property_facts_lead_key", "lead_id", "fact_key"),
+        Index("ix_lead_property_facts_status", "verification_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id"), index=True)
+    property_id: Mapped[int] = mapped_column(ForeignKey("properties.id"), index=True)
+    fact_key: Mapped[str] = mapped_column(String(120), index=True)
+    label: Mapped[str] = mapped_column(String(160))
+    value: Mapped[dict] = mapped_column(JSON, default=dict)
+    source: Mapped[str] = mapped_column(String(120), default="unknown")
+    source_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    confidence: Mapped[float] = mapped_column(Float, default=0)
+    verification_status: Mapped[FactVerificationStatus] = mapped_column(SqlEnum(FactVerificationStatus), default=FactVerificationStatus.unknown, index=True)
+    stale: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    contradiction: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    lead: Mapped[Lead] = relationship()
+    property: Mapped[Property] = relationship()
+
+
+class LeadQualificationQuestion(Base):
+    __tablename__ = "lead_qualification_questions"
+    __table_args__ = (
+        Index("ix_lead_qualification_lead_order", "lead_id", "question_order"),
+        Index("ix_lead_qualification_lead_status", "lead_id", "status"),
+        Index("ix_lead_qualification_question_key", "question_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id"), index=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), index=True)
+    question_key: Mapped[str] = mapped_column(String(120), index=True)
+    question_text: Mapped[str] = mapped_column(Text)
+    reason_selected: Mapped[str] = mapped_column(Text)
+    question_order: Mapped[int] = mapped_column(Integer, index=True)
+    response_type: Mapped[QualificationResponseType] = mapped_column(SqlEnum(QualificationResponseType), default=QualificationResponseType.text)
+    options: Mapped[list] = mapped_column(JSON, default=list)
+    original_response: Mapped[str] = mapped_column(Text, default="")
+    structured_value: Mapped[dict] = mapped_column(JSON, default=dict)
+    confirmation_status: Mapped[FactVerificationStatus] = mapped_column(SqlEnum(FactVerificationStatus), default=FactVerificationStatus.unknown, index=True)
+    status: Mapped[QualificationQuestionStatus] = mapped_column(SqlEnum(QualificationQuestionStatus), default=QualificationQuestionStatus.selected, index=True)
+    downstream_outcome: Mapped[str] = mapped_column(String(120), default="")
+    selected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    lead: Mapped[Lead] = relationship()
+    agent: Mapped[Agent] = relationship()
+
+
+class AgentAllocationRecommendation(Base):
+    __tablename__ = "agent_allocation_recommendations"
+    __table_args__ = (
+        Index("ix_agent_allocations_lead_status", "lead_id", "status"),
+        Index("ix_agent_allocations_recommended_status", "recommended_agent_id", "status"),
+        Index("ix_agent_allocations_created", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id"), index=True)
+    requested_by_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), index=True)
+    recommended_agent_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
+    backup_agent_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
+    final_agent_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id"), nullable=True, index=True)
+    status: Mapped[AllocationRecommendationStatus] = mapped_column(SqlEnum(AllocationRecommendationStatus), default=AllocationRecommendationStatus.proposed, index=True)
+    eligible_agent_pool: Mapped[list] = mapped_column(JSON, default=list)
+    excluded_agents: Mapped[list] = mapped_column(JSON, default=list)
+    decisive_factors: Mapped[list] = mapped_column(JSON, default=list)
+    explanation: Mapped[str] = mapped_column(Text, default="")
+    policy_version: Mapped[str] = mapped_column(String(80), default="allocation-policy-v1", index=True)
+    context_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    override_reason_code: Mapped[str] = mapped_column(String(120), default="")
+    override_explanation: Mapped[str] = mapped_column(Text, default="")
+    assignment_outcome: Mapped[str] = mapped_column(String(120), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    lead: Mapped[Lead] = relationship()
+    requested_by: Mapped[Agent] = relationship(foreign_keys=[requested_by_id])
+    recommended_agent: Mapped[Agent | None] = relationship(foreign_keys=[recommended_agent_id])
+    backup_agent: Mapped[Agent | None] = relationship(foreign_keys=[backup_agent_id])
+    final_agent: Mapped[Agent | None] = relationship(foreign_keys=[final_agent_id])
+    score_components: Mapped[list["AgentAllocationScoreComponent"]] = relationship(back_populates="allocation_recommendation")
+
+
+class AgentAllocationScoreComponent(Base):
+    __tablename__ = "agent_allocation_score_components"
+    __table_args__ = (
+        Index("ix_agent_allocation_scores_allocation_agent", "allocation_recommendation_id", "agent_id"),
+        Index("ix_agent_allocation_scores_factor", "factor_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    allocation_recommendation_id: Mapped[int] = mapped_column(ForeignKey("agent_allocation_recommendations.id"), index=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), index=True)
+    factor_key: Mapped[str] = mapped_column(String(120), index=True)
+    label: Mapped[str] = mapped_column(String(180))
+    score: Mapped[float] = mapped_column(Float, default=0)
+    weight: Mapped[float] = mapped_column(Float, default=1)
+    weighted_score: Mapped[float] = mapped_column(Float, default=0)
+    rationale: Mapped[str] = mapped_column(Text, default="")
+    decisive: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    allocation_recommendation: Mapped[AgentAllocationRecommendation] = relationship(back_populates="score_components")
+    agent: Mapped[Agent] = relationship()

@@ -100,6 +100,31 @@ def test_adaptive_service_creates_accepts_and_records_outcome(client: TestClient
         db.close()
 
 
+def test_outcome_verifier_must_exist(client: TestClient) -> None:
+    login(client)
+    db = SessionLocal()
+    try:
+        agent = db.query(Agent).filter(Agent.username == "mia.agent").first()
+        assert agent is not None
+        lead = db.query(Lead).filter(Lead.agent_id == agent.id).first()
+        assert lead is not None
+
+        with pytest.raises(ValueError, match="verifier"):
+            record_lead_outcome(
+                db,
+                lead,
+                agent,
+                LeadOutcomeCreate(
+                    stage=lead.status.value,
+                    outcome_type="meaningful_conversation",
+                    outcome_value="Invalid verifier should be blocked.",
+                    verified_by=999999,
+                ),
+            )
+    finally:
+        db.close()
+
+
 def test_api_permissions_and_override_flow(client: TestClient) -> None:
     manager_token = login(client, "olivia.manager")
     agent_token = login(client, "mia.agent")
@@ -201,3 +226,11 @@ def test_adaptive_migration_declares_required_tables_and_indexes() -> None:
         assert table_name in text
     assert "ix_lead_decisions_lead_created" in text
     assert "ix_ai_recommendations_lead_status" in text
+
+
+def test_next_best_action_migration_declares_rule_table_and_indexes() -> None:
+    migration = Path("alembic/versions/202607220001_next_best_action_rules.py")
+    text = migration.read_text()
+    assert "next_best_action_rules" in text
+    assert "ix_next_best_action_rules_active_task_priority" in text
+    assert "ix_next_best_action_rules_scope" in text

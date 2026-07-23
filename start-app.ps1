@@ -151,10 +151,19 @@ if (-not (Test-Path $backendPython)) {
     $backendPython = "python"
 }
 
+Write-Step "Applying backend database migrations"
+Push-Location $BackendDir
+try {
+    & $backendPython -m alembic upgrade head
+}
+finally {
+    Pop-Location
+}
+
 Write-Step "Starting backend on http://localhost:$BackendPort"
 $backendProcess = Start-Process `
     -FilePath $backendPython `
-    -ArgumentList @("-m", "uvicorn", "app.main:app", "--reload", "--host", "127.0.0.1", "--port", "$BackendPort") `
+    -ArgumentList @("-m", "uvicorn", "app.main:app", "--reload", "--reload-exclude", ".venv\*", "--host", "127.0.0.1", "--port", "$BackendPort") `
     -WorkingDirectory $BackendDir `
     -RedirectStandardOutput $BackendLog `
     -RedirectStandardError $BackendErr `

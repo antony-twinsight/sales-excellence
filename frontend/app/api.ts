@@ -54,3 +54,8 @@ export function currency(value: number) {
 export function shortDate(value: string) {
   return new Intl.DateTimeFormat("en-AU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
+
+export function shortDateTime(value: string | null) {
+  if (!value) return "Not scheduled";
+  return new Intl.DateTimeFormat("en-AU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
